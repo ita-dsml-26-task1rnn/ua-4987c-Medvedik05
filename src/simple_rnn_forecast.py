@@ -1,5 +1,7 @@
 from __future__ import annotations
-
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dropout, Dense
+from tensorflow.keras.optimizers import Adam
 """Task 1 — One-step time series forecasting with LSTM (Keras).
 
 Students implement the core pipeline:
@@ -108,8 +110,17 @@ def make_windows(series: np.ndarray, window: int) -> Tuple[np.ndarray, np.ndarra
     Keras RNN layers expect inputs shaped as (batch, time, features).
     Here features=1 because the time series is univariate.
     """
-    raise NotImplementedError
-
+    X = []
+    y = []
+    
+    for i in range(0, len(series) - window):
+        X.append(series[i : i + window])
+        y.append(series[i + window])
+        
+    X = np.array(X).reshape(-1, window, 1)
+    y = np.array(y).reshape(-1, 1)
+    return X, y
+                
 
 def time_split(
     X: np.ndarray,
@@ -148,7 +159,27 @@ def time_split(
     - Do NOT shuffle.
     - The split is performed on already-windowed samples.
     """
-    raise NotImplementedError
+    
+    if train_frac <= 0 or val_frac <= 0 or (train_frac + val_frac) >= 1.0:
+        raise ValueError("Invalid fractions")
+    
+    if len(X) == 0 or len(y) == 0:
+        raise ValueError("One of the splits is empty.")
+    
+    train_end = int(len(X) * train_frac)
+    val_end = int(len(X) * val_frac + train_end)
+    
+    
+    X_train = X[:train_end]
+    y_train = y[:train_end]
+    
+    X_val = X[train_end:val_end]
+    y_val = y[train_end:val_end]
+    
+    X_test = X[val_end:]
+    y_test = y[val_end:]
+    
+    return ((X_train, y_train), (X_val, y_val), (X_test, y_test)) 
 
 
 def build_model(
@@ -186,7 +217,16 @@ def build_model(
     -----
     You may change the architecture slightly, but keep I/O shapes the same.
     """
-    raise NotImplementedError
+    
+    model = Sequential([
+        LSTM(n_units, input_shape=(window, 1)),
+        Dropout(dropout),
+        Dense(dense_units, activation='relu'),
+        Dense(1)
+    ])
+    adam = Adam(learning_rate=learning_rate)
+    model.compile(optimizer=adam, loss='mse', metrics=['mae'])
+    return model
 
 
 def train_model(
@@ -245,7 +285,22 @@ def train_model(
     - Prefer using EarlyStopping (optional) to reduce overfitting.
     - Keep the function deterministic as much as possible.
     """
-    raise NotImplementedError
+    tf.keras.utils.set_random_seed(seed)
+    X, y = make_windows(series, window)
+    (X_train, y_train), (X_val, y_val), (X_test, y_test) = time_split(X, y, train_frac, val_frac)
+    model = build_model(window)
+    
+    
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=epochs,
+        batch_size=batch_size,
+        verbose=verbose,
+        shuffle=False
+    )
+    
+    return (model, X_test, y_test, history)
 
 
 # ----------------------------
